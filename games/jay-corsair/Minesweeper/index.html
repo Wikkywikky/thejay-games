@@ -1,1 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Jay Minesweeper</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  font-family:Arial,sans-serif;
+  color:white;
+  background:radial-gradient(circle at top,#4c1d95,#170025 62%,#050008);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:14px;
+  user-select:none;
+}
+.card{
+  width:min(96vw,520px);
+  background:rgba(18,0,32,.9);
+  border:1px solid rgba(216,180,254,.65);
+  border-radius:26px;
+  padding:18px;
+  text-align:center;
+  box-shadow:0 0 35px rgba(168,85,247,.45);
+}
+h1{margin:0 0 8px;color:#eadcff;text-shadow:0 0 20px #a855f7}
+.sub{color:#dec9ff;font-size:14px;line-height:1.4}
+.stats{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin:14px 0;
+}
+.box{
+  background:rgba(76,29,149,.45);
+  border:1px solid rgba(216,180,254,.35);
+  border-radius:14px;
+  padding:9px 5px;
+  font-weight:bold;
+  font-size:13px;
+}
+.board{
+  width:min(92vw,420px);
+  height:min(92vw,420px);
+  margin:12px auto;
+  display:grid;
+  grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);
+  gap:5px;
+  padding:7px;
+  border-radius:20px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:inset 0 0 22px rgba(0,0,0,.35);
+}
+.cell{
+  border:1px solid rgba(216,180,254,.35);
+  border-radius:10px;
+  background:linear-gradient(135deg,#4c1d95,#7c3aed);
+  color:white;
+  font-weight:900;
+  font-size:clamp(13px,4vw,21px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  box-shadow:0 0 12px rgba(168,85,247,.25);
+}
+.cell.open{
+  background:rgba(255,255,255,.10);
+  box-shadow:inset 0 0 10px rgba(0,0,0,.35);
+}
+.cell.flag{
+  background:linear-gradient(135deg,#7c3aed,#d946ef);
+}
+.cell.bomb{
+  background:linear-gradient(135deg,#dc2626,#fb7185);
+}
+button{
+  border:0;
+  border-radius:999px;
+  padding:12px 18px;
+  color:white;
+  font-weight:bold;
+  background:linear-gradient(135deg,#7c3aed,#d946ef);
+  box-shadow:0 0 20px rgba(217,70,239,.5);
+  cursor:pointer;
+  margin:4px;
+}
+.message{min-height:28px;margin-top:10px;color:#f0abfc;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>💣 Jay Minesweeper</h1>
+  <div class="sub">Open safe nodes and avoid the hidden slashing bombs. Use Flag Mode to mark dangerous cells.</div>
 
+  <div class="stats">
+    <div class="box">Safe<br><span id="safe">0</span></div>
+    <div class="box">Flags<br><span id="flags">0</span></div>
+    <div class="box">Time<br><span id="time">0s</span></div>
+  </div>
+
+  <div id="board" class="board"></div>
+
+  <button onclick="newGame()">New Game</button>
+  <button id="flagBtn" onclick="toggleFlag()">Flag Mode: OFF</button>
+
+  <div id="message" class="message"></div>
+</div>
+
+<script>
+const SIZE=8;
+const BOMBS=10;
+const boardEl=document.getElementById("board");
+const safeEl=document.getElementById("safe");
+const flagsEl=document.getElementById("flags");
+const timeEl=document.getElementById("time");
+const msgEl=document.getElementById("message");
+const flagBtn=document.getElementById("flagBtn");
+
+let grid=[],opened=0,flags=0,flagMode=false,gameOver=false;
+let seconds=0,timer=null,started=false,audioCtx;
+
+function sound(freq=440,type="sine",dur=.08,vol=.08){
+  if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.frequency.value=freq;o.type=type;g.gain.value=vol;
+  o.connect(g);g.connect(audioCtx.destination);
+  o.start();
+  g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);
+  o.stop(audioCtx.currentTime+dur);
+}
+
+function newGame(){
+  clearInterval(timer);
+  seconds=0;opened=0;flags=0;flagMode=false;gameOver=false;started=false;
+  flagBtn.textContent="Flag Mode: OFF";
+  msgEl.textContent="Find all safe Jay nodes!";
+  grid=Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>({
+    r,c,bomb:false,open:false,flag:false,count:0
+  })));
+
+  let placed=0;
+  while(placed<BOMBS){
+    const r=Math.floor(Math.random()*SIZE),c=Math.floor(Math.random()*SIZE);
+    if(!grid[r][c].bomb){
+      grid[r][c].bomb=true;
+      placed++;
+    }
+  }
+
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      grid[r][c].count=neighbors(r,c).filter(n=>n.bomb).length;
+    }
+  }
+  render();
+  updateUI();
+  sound(720,"triangle",.12);
+}
+
+function startTimer(){
+  if(started)return;
+  started=true;
+  timer=setInterval(()=>{
+    seconds++;
+    updateUI();
+  },1000);
+}
+
+function neighbors(r,c){
+  const arr=[];
+  for(let dr=-1;dr<=1;dr++){
+    for(let dc=-1;dc<=1;dc++){
+      if(!dr&&!dc)continue;
+      const nr=r+dr,nc=c+dc;
+      if(nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE)arr.push(grid[nr][nc]);
+    }
+  }
+  return arr;
+}
+
+function toggleFlag(){
+  flagMode=!flagMode;
+  flagBtn.textContent="Flag Mode: "+(flagMode?"ON":"OFF");
+  sound(flagMode?620:380,"triangle",.06);
+}
+
+function clickCell(r,c){
+  if(gameOver)return;
+  startTimer();
+  const cell=grid[r][c];
+
+  if(flagMode){
+    if(cell.open)return;
+    cell.flag=!cell.flag;
+    flags+=cell.flag?1:-1;
+    sound(520,"triangle",.05);
+    render();updateUI();
+    return;
+  }
+
+  if(cell.flag||cell.open)return;
+
+  if(cell.bomb){
+    cell.open=true;
+    end(false);
+    return;
+  }
+
+  openCell(cell);
+  sound(650,"sine",.05);
+  render();
+  updateUI();
+
+  if(opened===SIZE*SIZE-BOMBS)end(true);
+}
+
+function openCell(cell){
+  if(cell.open||cell.flag)return;
+  cell.open=true;
+  opened++;
+  if(cell.count===0){
+    neighbors(cell.r,cell.c).forEach(n=>{
+      if(!n.open&&!n.bomb)openCell(n);
+    });
+  }
+}
+
+function render(){
+  boardEl.innerHTML="";
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const cell=grid[r][c];
+      const div=document.createElement("div");
+      div.className="cell";
+      if(cell.open)div.classList.add("open");
+      if(cell.flag)div.classList.add("flag");
+      if(cell.open&&cell.bomb)div.classList.add("bomb");
+
+      if(cell.open){
+        if(cell.bomb) div.textContent="💥";
+        else if(cell.count>0) div.textContent=cell.count;
+        else div.textContent="";
+      }else if(cell.flag){
+        div.textContent="🚩";
+      }else{
+        div.textContent="J";
+      }
+
+      div.onclick=()=>clickCell(r,c);
+      boardEl.appendChild(div);
+    }
+  }
+}
+
+function updateUI(){
+  safeEl.textContent=opened+"/"+(SIZE*SIZE-BOMBS);
+  flagsEl.textContent=flags+"/"+BOMBS;
+  timeEl.textContent=seconds+"s";
+}
+
+function revealBombs(){
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      if(grid[r][c].bomb)grid[r][c].open=true;
+    }
+  }
+}
+
+function end(win){
+  gameOver=true;
+  clearInterval(timer);
+  if(win){
+    msgEl.textContent="🎉 You secured all Jay nodes!";
+    sound(950,"triangle",.2);
+  }else{
+    revealBombs();
+    msgEl.textContent="💥 Slashing bomb hit! Try again.";
+    sound(130,"sawtooth",.28);
+    render();
+  }
+}
+
+newGame();
+</script>
+</body>
+</html>
