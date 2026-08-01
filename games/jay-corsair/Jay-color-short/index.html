@@ -1,1 +1,51 @@
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Jay Color Sort</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:Arial,sans-serif;color:white;background:radial-gradient(circle at top,#4c1d95,#170025 62%,#050008);display:flex;align-items:center;justify-content:center;padding:14px;user-select:none}
+.card{width:min(96vw,520px);background:rgba(18,0,32,.9);border:1px solid rgba(216,180,254,.65);border-radius:26px;padding:18px;text-align:center;box-shadow:0 0 35px rgba(168,85,247,.45)}
+h1{margin:0 0 8px;color:#eadcff;text-shadow:0 0 20px #a855f7}.sub{color:#dec9ff;font-size:14px;line-height:1.4}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.box{background:rgba(76,29,149,.45);border:1px solid rgba(216,180,254,.35);border-radius:14px;padding:9px 5px;font-weight:bold;font-size:13px}
+.tubes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;width:min(92vw,420px);margin:16px auto}
+.tube{height:210px;border:3px solid rgba(216,180,254,.55);border-top:0;border-radius:0 0 28px 28px;background:rgba(255,255,255,.06);display:flex;flex-direction:column-reverse;align-items:center;gap:7px;padding:10px;cursor:pointer;box-shadow:inset 0 0 18px rgba(0,0,0,.35)}
+.tube.selected{box-shadow:0 0 24px rgba(240,171,252,.9), inset 0 0 18px rgba(0,0,0,.35)}
+.orb{width:54px;height:34px;border-radius:999px;box-shadow:0 0 14px currentColor;border:2px solid rgba(255,255,255,.45)}
+button{border:0;border-radius:999px;padding:12px 18px;color:white;font-weight:bold;background:linear-gradient(135deg,#7c3aed,#d946ef);box-shadow:0 0 20px rgba(217,70,239,.5);margin:4px}
+.message{min-height:30px;margin-top:10px;color:#f0abfc;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>🧪 Jay Color Sort</h1>
+<div class="sub">Sort the Jay orbs. Tap one tube, then another tube to move the top orb.</div>
+<div class="stats"><div class="box">Moves<br><span id="moves">0</span></div><div class="box">Time<br><span id="time">0s</span></div><div class="box">Best<br><span id="best">-</span></div></div>
+<div id="tubes" class="tubes"></div>
+<button onclick="newGame()">New Game</button><button onclick="undoMove()">Undo</button>
+<div id="message" class="message"></div>
+</div>
+<script>
+const COLORS=["#a855f7","#ec4899","#38bdf8","#22c55e"];
+const tubesEl=document.getElementById("tubes"),movesEl=document.getElementById("moves"),timeEl=document.getElementById("time"),bestEl=document.getElementById("best"),msgEl=document.getElementById("message");
+let tubes=[],selected=null,moves=0,seconds=0,timer=null,started=false,history=[],audioCtx;
+let best=localStorage.getItem("jayColorSortBest")||"";
+if(best)bestEl.textContent=best+" moves";
+function sound(f=440,t="sine",d=.08,v=.08){if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=f;o.type=t;g.gain.value=v;o.connect(g);g.connect(audioCtx.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+d);o.stop(audioCtx.currentTime+d)}
+function shuffle(a){return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(x=>x[1])}
+function startTimer(){if(started)return;started=true;timer=setInterval(()=>{seconds++;timeEl.textContent=seconds+"s"},1000)}
+function newGame(){clearInterval(timer);started=false;selected=null;moves=0;seconds=0;history=[];let orbs=[];COLORS.forEach(c=>{for(let i=0;i<4;i++)orbs.push(c)});orbs=shuffle(orbs);tubes=[[],[],[],[],[],[]];for(let i=0;i<16;i++)tubes[Math.floor(i/4)].push(orbs[i]);msgEl.textContent="Sort all colors into separate tubes.";update();render();sound(720,"triangle",.12)}
+function render(){tubesEl.innerHTML="";tubes.forEach((tube,i)=>{const div=document.createElement("div");div.className="tube"+(selected===i?" selected":"");div.onclick=()=>pickTube(i);tube.forEach(color=>{const orb=document.createElement("div");orb.className="orb";orb.style.background=color;orb.style.color=color;div.appendChild(orb)});tubesEl.appendChild(div)})}
+function pickTube(i){startTimer();if(selected===null){if(tubes[i].length===0){sound(140,"sawtooth",.05);return}selected=i;msgEl.textContent="Choose destination tube.";sound(520,"triangle",.05);render();return}if(selected===i){selected=null;render();return}moveOrb(selected,i);selected=null;render();update();if(isSolved())win()}
+function canMove(from,to){if(tubes[from].length===0||tubes[to].length>=4)return false;const orb=tubes[from][tubes[from].length-1];if(tubes[to].length===0)return true;return tubes[to][tubes[to].length-1]===orb}
+function moveOrb(from,to){if(!canMove(from,to)){msgEl.textContent="Invalid move.";sound(140,"sawtooth",.07);return}history.push(JSON.stringify(tubes));tubes[to].push(tubes[from].pop());moves++;msgEl.textContent="Orb moved.";sound(680,"sine",.06)}
+function undoMove(){if(history.length===0)return;tubes=JSON.parse(history.pop());moves=Math.max(0,moves-1);selected=null;msgEl.textContent="Undo.";sound(360,"triangle",.06);update();render()}
+function isSolved(){return tubes.every(t=>t.length===0||(t.length===4&&t.every(c=>c===t[0])))}
+function win(){clearInterval(timer);started=false;msgEl.textContent="🎉 Completed in "+moves+" moves and "+seconds+"s!";if(!best||moves<Number(best)){best=moves;localStorage.setItem("jayColorSortBest",best);bestEl.textContent=best+" moves"}sound(1000,"triangle",.2)}
+function update(){movesEl.textContent=moves;timeEl.textContent=seconds+"s"}
+newGame();
+</script>
+</body>
+</html>
